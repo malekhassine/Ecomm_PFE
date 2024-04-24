@@ -1,6 +1,9 @@
 # Env file to hide secrets (rename and use .sample-env instead)
 .env
 
+# IntellJ packages and configs
+.idea
+
 
 # Compiled class file
 *.class

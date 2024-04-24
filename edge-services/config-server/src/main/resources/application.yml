@@ -1,0 +1,14 @@
+server:
+  port: 8900
+
+spring:
+  application:
+    name: config-server
+
+  cloud:
+    config:
+      server:
+        git:
+          uri: ${CONFIG_SERVER_GIT_REPO}
+          username: ${GITHUB_USERNAME}
+          password: ${GITHUB_REPO_ACCESS_TOKEN}

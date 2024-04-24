@@ -3,13 +3,13 @@ version: "3.8"
 services:
   db:
     build:
-      context: ./ecomm-db
+      context: ./infra/ecomm-db
       dockerfile: Dockerfile
     ports:
       - "5432:5432"
     volumes:
       - postgres-ecomm-data:/var/lib/postgresql/data
-      - ./ecomm-db/ecomm.sql:/docker-entrypoint-initdb.d/ecomm.sql
+      - ./infra/ecomm-db/ecomm.sql:/docker-entrypoint-initdb.d/ecomm.sql
     env_file:
       - .env
     restart: unless-stopped
@@ -17,61 +17,102 @@ services:
   gateway:
     depends_on:
       - db
+      - config
+      - discovery
     build:
-      context: ./ecomm-gateway
-      dockerfile: Dockerfile.dev
+      context: ./edge-services/ecomm-gateway
+      dockerfile: Dockerfile.local
     ports:
       - "8091:8091"
     env_file:
       - .env
 
+  config:
+    build:
+      context: ./edge-services/config-server
+      dockerfile: Dockerfile.local
+    container_name: config-server
+    ports:
+      - "8900:8900"
+    environment:
+      CONFIG_SERVER_GIT_REPO: https://github.com/MedEzzedine/Ecommerce-Microservices-Config.git
+      GITHUB_USERNAME: MedEzzedine
+      #GITHUB_REPO_ACCESS_TOKEN: <token or github password>
+    env_file:
+      - .env
+
+  discovery:
+    build:
+      context: ./edge-services/discovery-server
+      dockerfile: Dockerfile.local
+    container_name: discovery-server
+    ports:
+      - "9999:9999"
+    env_file:
+      - .env
+    depends_on:
+      - config
+
   user:
     build:
-      context: ./ecomm-web
-      dockerfile: Dockerfile.dev
+      context: ./micro-services/ecomm-web
+      dockerfile: Dockerfile.local
     ports:
       - "8080:8080"
     env_file:
       - .env
     depends_on:
       - db
+      - config
+      - discovery
 
   cart:
     build:
-      context: ./ecomm-cart
-      dockerfile: Dockerfile.dev
+      context: ./micro-services/ecomm-cart
+      dockerfile: Dockerfile.local
     ports:
       - "8082:8082"
     env_file:
       - .env
     depends_on:
       - db
+      - config
+      - discovery
 
   product:
     build:
-      context: ./ecomm-product
-      dockerfile: Dockerfile.dev
+      context: ./micro-services/ecomm-product
+      dockerfile: Dockerfile.local
     ports:
       - "8081:8081"
     env_file:
       - .env
+    links:
+      - redis
     depends_on:
       - db
+      - redis
+      - config
+      - discovery
 
   order:
     build:
-      context: ./ecomm-order
-      dockerfile: Dockerfile.dev
+      context: ./micro-services/ecomm-order
+      dockerfile: Dockerfile.local
     ports:
       - "8083:8083"
     env_file:
       - .env
     depends_on:
       - db
+      - config
+      - discovery
 
   elasticsearch:
     image: elasticsearch:8.11.1
     container_name: es-container
+    depends_on:
+      - product
     volumes:
       - esdata:/usr/share/elasticsearch/data
     ports:
@@ -88,6 +129,16 @@ services:
         "xpack.security.enabled=true",
         "xpack.security.enrollment.enabled=false",
       ]
+
+  redis:
+    image: redis:6.2-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --save 20 1 --loglevel verbose --protected-mode no #--requirepass eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81
+    volumes:
+      - redis-cache:/data
 
   # logstash:
   #    image: logstash:8.11.1
@@ -110,20 +161,18 @@ services:
 
   ui:
     build:
-      context: ./ecomm-ui
-      dockerfile: Dockerfile.dev
+      context: ./frontend
+      dockerfile: Dockerfile.local
     ports:
       - "8888:80"
     depends_on:
       - gateway
-      - db
-      - user
       - product
-      - order
-      - cart
 
 networks:
   elk:
+    driver: bridge
+  cache-net:
     driver: bridge
 
 volumes:
@@ -131,3 +180,4 @@ volumes:
     driver: local
   postgres-ecomm-data:
   logstash-conf:
+  redis-cache:
